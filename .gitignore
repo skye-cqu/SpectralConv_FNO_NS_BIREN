@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 环境
+.env
+.venv
+venv/
+*.so
+
+# IDE
+.vscode/
+.idea/
+
+# 结果文件
+results/raw/
+results/tmp/
+results/**/*.npy
+results/**/*.npz
+results/**/*.jsonl
+
+# 精选 Markdown、CSV、PNG、JPG、PDF 报告与图表应提交。
+# 临时图请放入 results/tmp/，原始大体量输出请放入 results/raw/。
+
+# 训练产出
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+fno_ns/outputs/
+
+# 数据集
+data/
+fno_ns/ns_data/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# Python 工具缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

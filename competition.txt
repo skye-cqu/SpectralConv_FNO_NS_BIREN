@@ -1,0 +1,1289 @@
+
+        首页赛事报名参赛管理立即报名登录/注册首页/赛道介绍/赛道五壁仞飞翔杯·模型与算子 · Model & Operator基于 Agent 的模型和算子开发聚焦 AI4S 关键算子与科学计算模型的工程实现，依托壁仞科技GPU，以 AI Agent 辅助开发范式探索人机协同的高效开发路径。立即报名赛事详情赛事简介面向 AI for Science（AI4S）领域的核心计算算子与科学计算模型，鼓励参赛者依托壁仞 BIREN GPU 芯片及配套软件栈，采用 AI Skills/Agent 辅助开发模式，结合壁仞自研的模型/算子开发 Skills/Agent，完成高性能算子实现与科学计算模型部署，形成可运行、可验证、可复现的成果。本赛道设置 1 道必选题和 3 道进阶题（三选一），参赛队伍须完成必选题，并从进阶题中任选一道完成。赛道特色：Skills/Agent 驱动的国产 GPU 开发范式（必须项）本赛道要求参赛者采用 AI Skills/Agent 辅助开发模式，结合壁仞自研模型/算子开发 Skills/Agent 与通用 AI 编程工具（如 Claude Code、Cursor 等），实践"人机协同"的高效开发范式。参赛者必须在开发过程中记录 Skills/Agent 交互日志，展示如何利用 Skills/Agent 进行算子设计与调试、性能瓶颈分析、模型适配与优化、结果验证与迭代。Skills/Agent 辅助开发记录为必须提交材料，未提交视为不合格。Skills/Agent 辅助开发的深度、效率提升效果及工程实践质量将作为重要评审维度。
+赛题必选题进阶题必选题：Spectral Convolution 算子开发【AI4S 算子】Fourier Neural Operator 核心算子实现
+1. 赛题简介
+Fourier Neural Operator（FNO）是 AI for Science 领域最具代表性的神经算子架构之一，广泛应用于流体力学模拟、天气预报、地下水流预测等偏微分方程（PDE）求解场景。FNO 的核心创新在于 Spectral Convolution（谱卷积）算子——在傅里叶频域空间中学习全局卷积核，相比传统卷积具有分辨率无关性和全局感受野等优势。
+Spectral Convolution 的计算流程为：
+输入特征 x(shape: [B, C_in, H, W])
+→ FFT 变换到频域
+→ 频域复数矩阵乘法（可学习权重 R，shape: [C_in, C_out, modes, modes]）
+→ IFFT 变换回空间域
+→ 输出特征 y(shape: [B, C_out, H, W])
+本题要求参赛者在壁仞 GPU 平台上实现高性能的 Spectral Convolution 算子，并通过正确性验证和性能测试。注意：FFT 运算建议优先支持空间维度为 2 的幂次（如 64, 128, 256）的输入 shape，以获得最佳计算性能。
+2. 任务要求
+基础要求（必须完成）：
+
+
+实现 2D Spectral Convolution 算子的前向计算（Forward）。
+
+
+支持输入 shape 为 [B, C_in, H, W]，输出 shape 为 [B, C_out, H, W]。
+
+
+支持可配置的傅里叶模态截断数 modes（仅保留低频分量）。
+
+
+首选在壁仞 BIREN GPU 芯片上完成运行。
+
+
+与 PyTorch 参考实现（CPU/CUDA）进行数值正确性对比，相对误差 ≤ 1e-4。
+
+
+进阶要求（加分项）：
+
+
+实现反向传播（Backward），支持端到端训练。
+
+
+支持 3D Spectral Convolution（输入 shape [B, C, D, H, W]）。
+
+
+进行算子性能优化（显存优化、kernel 融合、计算并行度提升等）。
+
+
+提供不同分辨率（64×64, 128×128, 256×256，均为 2 的幂次）下的性能对比报告。
+
+
+展示 Agent 辅助开发过程（调试日志、性能分析对话记录）。
+
+
+3. 完整PyTorch参考实现
+以下为完整的可运行PyTorch参考实现，包含前向计算、反向传播、正确性验证和性能测试。该实现仅供算法逻辑参考。参赛者在 BIREN GPU 平台上实现时，建议采用以下方式之一：（1）使用 SUPA 源码直接实现算子核心计算逻辑，通过算子串联构建完整模型；（2）通过 torch.extension（C++/SUPA 扩展）封装自定义算子，在 Python 层组装模型。不建议直接使用原生 PyTorch 算子拼接模型，需体现对底层计算的理解和优化能力。
+3.1 SpectralConv2d 算子实现（含前向和反向）
+python复制import torch
+import torch.nn as nn
+import torch.fft
+import time
+import numpy as np
+
+class SpectralConv2d(nn.Module):
+    """2D Spectral Convolution 算子 - FNO核心组件
+
+    计算流程: FFT -> 频域复数矩阵乘(截断低频) -> IFFT
+    """
+    def __init__(self, in_channels, out_channels, modes1, modes2):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1  # 第一维频率截断模态数
+        self.modes2 = modes2  # 第二维频率截断模态数
+
+        scale = 1.0 / (in_channels * out_channels)
+        # 可学习的频域权重 (两组: 正频率区域 + 负频率区域)
+        self.weights1 = nn.Parameter(
+            scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(
+            scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat))
+
+    def compl_mul2d(self, input, weights):
+        """复数批量矩阵乘: (B, C_in, H, W) x (C_in, C_out, H, W) -> (B, C_out, H, W)"""
+        return torch.einsum("bixy,ioxy->boxy", input, weights)
+
+    def forward(self, x):
+        """
+        前向计算
+        Args:
+            x: [B, C_in, H, W] 实数张量
+        Returns:
+            [B, C_out, H, W] 实数张量
+        """
+        B, C_in, H, W = x.shape
+
+        # Step 1: 2D实数FFT (rfft2), 输出shape: [B, C_in, H, W//2+1] (复数)
+        x_ft = torch.fft.rfft2(x)
+
+        # Step 2: 在频域进行低频模态的复数矩阵乘
+        out_ft = torch.zeros(B, self.out_channels, H, W // 2 + 1,
+                            dtype=torch.cfloat, device=x.device)
+
+        # 正频率部分 [:modes1, :modes2]
+        out_ft[:, :, :self.modes1, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
+
+        # 负频率部分 [-modes1:, :modes2]
+        out_ft[:, :, -self.modes1:, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+
+        # Step 3: 逆FFT回空间域
+        x_out = torch.fft.irfft2(out_ft, s=(H, W))
+        return x_out
+
+
+class SpectralConv3d(nn.Module):
+    """3D Spectral Convolution 算子 (进阶)"""
+    def __init__(self, in_channels, out_channels, modes1, modes2, modes3):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.modes3 = modes3
+
+        scale = 1.0 / (in_channels * out_channels)
+        self.weights1 = nn.Parameter(scale * torch.rand(
+            in_channels, out_channels, modes1, modes2, modes3, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(scale * torch.rand(
+            in_channels, out_channels, modes1, modes2, modes3, dtype=torch.cfloat))
+        self.weights3 = nn.Parameter(scale * torch.rand(
+            in_channels, out_channels, modes1, modes2, modes3, dtype=torch.cfloat))
+        self.weights4 = nn.Parameter(scale * torch.rand(
+            in_channels, out_channels, modes1, modes2, modes3, dtype=torch.cfloat))
+
+    def compl_mul3d(self, input, weights):
+        return torch.einsum("bixyz,ioxyz->boxyz", input, weights)
+
+    def forward(self, x):
+        B, C, D, H, W = x.shape
+        x_ft = torch.fft.rfftn(x, dim=[-3, -2, -1])
+
+        out_ft = torch.zeros(B, self.out_channels, D, H, W // 2 + 1,
+                            dtype=torch.cfloat, device=x.device)
+
+        out_ft[:, :, :self.modes1, :self.modes2, :self.modes3] = \
+            self.compl_mul3d(x_ft[:, :, :self.modes1, :self.modes2, :self.modes3], self.weights1)
+        out_ft[:, :, -self.modes1:, :self.modes2, :self.modes3] = \
+            self.compl_mul3d(x_ft[:, :, -self.modes1:, :self.modes2, :self.modes3], self.weights2)
+        out_ft[:, :, :self.modes1, -self.modes2:, :self.modes3] = \
+            self.compl_mul3d(x_ft[:, :, :self.modes1, -self.modes2:, :self.modes3], self.weights3)
+        out_ft[:, :, -self.modes1:, -self.modes2:, :self.modes3] = \
+            self.compl_mul3d(x_ft[:, :, -self.modes1:, -self.modes2:, :self.modes3], self.weights4)
+
+        x_out = torch.fft.irfftn(out_ft, s=(D, H, W))
+        return x_out
+展开全部 100 行
+3.2 正确性验证与性能测试脚本
+python复制def test_correctness():
+    """正确性验证: 对比自定义实现与参考实现的数值一致性"""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # 参数配置
+    B, C_in, C_out = 4, 32, 64
+    H, W = 128, 128
+    modes1, modes2 = 16, 16
+
+    # 初始化
+    model = SpectralConv2d(C_in, C_out, modes1, modes2).to(device)
+    x = torch.randn(B, C_in, H, W, device=device)
+
+    # 前向计算
+    with torch.no_grad():
+        y = model(x)
+
+    print(f"输入 shape: {x.shape}")
+    print(f"输出 shape: {y.shape}")
+    print(f"输出范围: [{y.min().item():.6f}, {y.max().item():.6f}]")
+
+    # 反向传播验证
+    x.requires_grad_(True)
+    y = model(x)
+    loss = y.sum()
+    loss.backward()
+    print(f"梯度 shape: {x.grad.shape}")
+    print(f"梯度范围: [{x.grad.min().item():.6f}, {x.grad.max().item():.6f}]")
+    print("正确性验证通过!")
+    return True
+
+
+def benchmark_performance():
+    """性能测试: 不同分辨率下的执行时间和显存占用"""
+    device = torch.device("cuda")
+    results = []
+
+    resolutions = [(64, 64), (128, 128), (256, 256)]
+    B, C_in, C_out = 4, 32, 64
+    modes1, modes2 = 16, 16
+
+    for H, W in resolutions:
+        model = SpectralConv2d(C_in, C_out, modes1, modes2).to(device)
+        x = torch.randn(B, C_in, H, W, device=device)
+
+        # Warmup
+        for _ in range(10):
+            _ = model(x)
+        torch.cuda.synchronize()
+
+        # 前向计时
+        start = time.time()
+        for _ in range(100):
+            _ = model(x)
+        torch.cuda.synchronize()
+        fwd_time = (time.time() - start) / 100 * 1000  # ms
+
+        # 显存统计
+        torch.cuda.reset_peak_memory_stats()
+        _ = model(x)
+        mem = torch.cuda.max_memory_allocated() / 1024**2  # MB
+
+        results.append({
+            "resolution": f"{H}x{W}",
+            "forward_time_ms": f"{fwd_time:.3f}",
+            "memory_MB": f"{mem:.1f}",
+        })
+        print(f"分辨率 {H}x{W}: 前向 {fwd_time:.3f}ms, 显存 {mem:.1f}MB")
+
+    return results
+
+
+if __name__ == "__main__":
+    test_correctness()
+    print("\n--- 性能测试 ---")
+    benchmark_performance()
+展开全部 76 行
+5. 评测标准
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+维度权重说明正确性35%与参考实现的数值一致性（相对误差≤1e-4）性能25%考察算子执行时间、显存占用等；建议通过SOL-Score(https://github.com/nvidia/sol-execbench)评测算子实际表现与理论差距，目标是优化算子性能直到硬件极限；代码质量10%可读性、模块化、SUPA/extension实现质量Agent 开发15%Agent辅助开发的深度和效果（必须提交），考察算子开发过程、优化过程、性能评估与分析过程等交互文档以及skills沉淀；另如果可以提供算子自动调优skills会额外加分；扩展能力15%进阶功能实现情况（3D、反向传播等）
+进阶题 A进阶题 B进阶题 C进阶题 A：Physics-Informed Neural Network 求解热传导方程【AI4S 模型】PINN 求解二维稳态热传导问题
+1. 赛题简介
+Physics-Informed Neural Network（PINN）是将物理定律嵌入神经网络训练过程的经典方法，通过将 PDE 残差作为损失函数的一部分，实现无需标注数据即可求解微分方程。
+求解目标: 二维稳态热传导方程（Laplace/Poisson 方程）:
+∂²u/∂x² + ∂²u/∂y² = f(x, y), (x, y) ∈ Ω
+应用场景：芯片散热分析、建筑热工设计、地热资源评估。
+2. 任务要求
+基础要求：
+
+
+实现一个 MLP 网络（≥ 4 层，每层 ≥ 64 个神经元）作为 PDE 解的近似。
+
+
+构造 PINN 损失函数：PDE 残差损失 + 边界条件损失。
+
+
+在规则域（如单位正方形 [0,1]×[0,1]）上训练并求解。
+
+
+提供至少 1 个 benchmark 案例（如已知解析解的问题），验证相对 L2 误差 ≤ 1%。
+
+
+首选在壁仞 BIREN GPU 芯片上完成模型搭建与推理验证（训练为加分项，非硬性要求）。
+
+
+3. 完整PyTorch参考实现
+3.1 PINN模型与训练完整实现
+python复制import torch
+import torch.nn as nn
+import numpy as np
+import matplotlib.pyplot as plt
+
+class PINN(nn.Module):
+    """Physics-Informed Neural Network for 2D heat equation"""
+    def __init__(self, layers=[2, 64, 64, 64, 64, 1], activation=nn.Tanh):
+        super().__init__()
+        modules = []
+        for i in range(len(layers) - 1):
+            modules.append(nn.Linear(layers[i], layers[i+1]))
+            if i < len(layers) - 2:
+                modules.append(activation())
+        self.network = nn.Sequential(*modules)
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x):
+        """x: [N, 2] -> u: [N, 1]"""
+        return self.network(x)
+
+
+class PINNSolver:
+    """PINN求解器: 求解 Δu = f(x,y) on [0,1]x[0,1]"""
+
+    def __init__(self, device='cuda'):
+        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+        self.model = PINN(layers=[2, 128, 128, 128, 128, 1]).to(self.device)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=2000, gamma=0.5)
+
+    def exact_solution(self, x, y):
+        """解析解: u(x,y) = sin(πx)·sin(πy)"""
+        return torch.sin(np.pi * x) * torch.sin(np.pi * y)
+
+    def source_term(self, x, y):
+        """源项: f(x,y) = -2π²·sin(πx)·sin(πy)"""
+        return -2 * np.pi**2 * torch.sin(np.pi * x) * torch.sin(np.pi * y)
+
+    def compute_pde_residual(self, xy):
+        """计算PDE残差: Δu - f = 0"""
+        xy.requires_grad_(True)
+        u = self.model(xy)
+
+        # 一阶导数
+        grad_u = torch.autograd.grad(u, xy, grad_outputs=torch.ones_like(u),
+                                      create_graph=True)[0]
+        u_x = grad_u[:, 0:1]
+        u_y = grad_u[:, 1:2]
+
+        # 二阶导数
+        u_xx = torch.autograd.grad(u_x, xy, grad_outputs=torch.ones_like(u_x),
+                                    create_graph=True)[0][:, 0:1]
+        u_yy = torch.autograd.grad(u_y, xy, grad_outputs=torch.ones_like(u_y),
+                                    create_graph=True)[0][:, 1:2]
+
+        # PDE残差: Δu - f
+        f = self.source_term(xy[:, 0:1], xy[:, 1:2])
+        residual = u_xx + u_yy - f
+        return residual
+
+    def compute_bc_loss(self, n_bc=200):
+        """计算边界条件损失: u = 0 on ∂Ω"""
+        # 四条边界
+        t = torch.linspace(0, 1, n_bc, device=self.device).unsqueeze(1)
+        zeros = torch.zeros_like(t)
+        ones = torch.ones_like(t)
+
+        bc_points = torch.cat([
+            torch.cat([t, zeros], dim=1),     # 下边 y=0
+            torch.cat([t, ones], dim=1),      # 上边 y=1
+            torch.cat([zeros, t], dim=1),     # 左边 x=0
+            torch.cat([ones, t], dim=1),      # 右边 x=1
+        ], dim=0)
+
+        u_bc = self.model(bc_points)
+        return torch.mean(u_bc**2)
+
+    def train(self, n_epochs=10000, n_interior=2000, n_bc=200):
+        """训练PINN"""
+        losses = []
+        for epoch in range(n_epochs):
+            self.optimizer.zero_grad()
+
+            # 内部采样点
+            xy_interior = torch.rand(n_interior, 2, device=self.device)
+
+            # PDE残差损失
+            residual = self.compute_pde_residual(xy_interior)
+            loss_pde = torch.mean(residual**2)
+
+            # 边界条件损失
+            loss_bc = self.compute_bc_loss(n_bc)
+
+            # 总损失
+            loss = loss_pde + 100.0 * loss_bc  # 边界条件权重更大
+
+            loss.backward()
+            self.optimizer.step()
+            self.scheduler.step()
+
+            losses.append(loss.item())
+
+            if (epoch + 1) % 1000 == 0:
+                l2_err = self.compute_l2_error()
+                print(f"Epoch {epoch+1}: Loss={loss.item():.6f}, "
+                      f"PDE={loss_pde.item():.6f}, BC={loss_bc.item():.6f}, "
+                      f"L2 Error={l2_err:.6f}")
+
+        return losses
+
+    def compute_l2_error(self, n=100):
+        """计算相对L2误差"""
+        x = torch.linspace(0, 1, n, device=self.device)
+        y = torch.linspace(0, 1, n, device=self.device)
+        X, Y = torch.meshgrid(x, y, indexing='ij')
+        xy = torch.stack([X.flatten(), Y.flatten()], dim=1)
+
+        with torch.no_grad():
+            u_pred = self.model(xy).reshape(n, n)
+        u_exact = self.exact_solution(X, Y)
+
+        l2_error = torch.norm(u_pred - u_exact) / torch.norm(u_exact)
+        return l2_error.item()
+
+    def visualize(self, save_path='pinn_result.png'):
+        """可视化结果"""
+        n = 100
+        x = torch.linspace(0, 1, n, device=self.device)
+        y = torch.linspace(0, 1, n, device=self.device)
+        X, Y = torch.meshgrid(x, y, indexing='ij')
+        xy = torch.stack([X.flatten(), Y.flatten()], dim=1)
+
+        with torch.no_grad():
+            u_pred = self.model(xy).reshape(n, n).cpu().numpy()
+        u_exact = self.exact_solution(X, Y).cpu().numpy()
+
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+        im0 = axes[0].imshow(u_exact, extent=[0,1,0,1], origin='lower', cmap='hot')
+        axes[0].set_title('Exact Solution')
+        plt.colorbar(im0, ax=axes[0])
+
+        im1 = axes[1].imshow(u_pred, extent=[0,1,0,1], origin='lower', cmap='hot')
+        axes[1].set_title('PINN Prediction')
+        plt.colorbar(im1, ax=axes[1])
+
+        im2 = axes[2].imshow(np.abs(u_pred - u_exact), extent=[0,1,0,1], origin='lower', cmap='hot')
+        axes[2].set_title('Absolute Error')
+        plt.colorbar(im2, ax=axes[2])
+
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=150)
+        print(f"结果已保存到 {save_path}")
+
+
+if __name__ == "__main__":
+    solver = PINNSolver(device='cuda')
+    losses = solver.train(n_epochs=10000)
+    l2_err = solver.compute_l2_error()
+    print(f"\n最终相对L2误差: {l2_err:.6f}")
+    solver.visualize()
+展开全部 167 行
+5. 评测标准
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+维度权重说明模型搭建30%PDE 残差与边界损失正确；网络可用标准 Linear/激活；路径可在 BIREN 前向跑通；SUPA/extension 从优正确性30%相对 L2≤1%（须可复现评估脚本）；进入「有实测 L2」档须满足下表训练门槛或 checkpoint；仅前向给部分分性能10%BIREN 单卡必报：主指标 **points/s**（评估网格前向，建议 100×100 或 128×128，声明分辨率；warmup≥10，统计≥50；注明纯 forward / 含网格生成）；辅 **grids/s**；**ms/grid**（或 ms/point）；峰值显存 MB。训练吞吐（加分）：同量纲 points/s（含残差/create_graph+backward），声明配点数可视化15%预测 / 真解 / 误差图清晰可读Agent 开发15%必须提交；考察模型开发、优化、性能评估与分析交互及 skills 沉淀；自动调优 skill 加分
+训练门槛： 参考实现每 iter 重采样配点并 step 一次（n_epochs=10000 即 10000 step）。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+档位step日志正确性处理冒烟< 1,000—流程分有效（最低）≥ 3,000≥10 次 loss（建议含 L2）可评实测 L2推荐≥ 10,000每 ≤1,000 step 打点利于达 L2≤1%，从优进阶题 B：图神经网络预测分子性质【AI4S 模型】GNN 分子性质预测模型
+1. 赛题简介
+分子性质预测是药物发现、材料设计、化学合成规划的基础任务。Graph Neural Network（GNN）通过将分子建模为图结构（原子为节点、化学键为边），学习分子的结构-性质映射关系。本题要求在壁仞 GPU 平台上实现一个 GNN 模型，基于 QM9 数据集预测分子性质。
+应用场景：药物先导化合物筛选、新能源材料 HOMO-LUMO gap 预测、毒性预测。
+2. 任务要求
+基础要求：
+
+
+实现 Message Passing Neural Network（MPNN）或 SchNet 风格的 GNN 模型。
+
+
+使用 QM9 数据集（约 13 万个小分子，≤ 9 个重原子）。
+
+
+预测至少 1 个分子性质（推荐 HOMO-LUMO gap 或 μ 偶极矩）。
+
+
+在标准数据集划分下，报告 MAE（Mean Absolute Error）。
+
+
+首选在壁仞 BIREN GPU 芯片上完成模型搭建与推理验证（训练为加分项，非硬性要求）。
+
+
+3. 完整PyTorch参考实现
+3.1 MPNN模型实现（纯PyTorch，不依赖PyG）
+python复制import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+import numpy as np
+
+class EdgeModel(nn.Module):
+    """边更新模型"""
+    def __init__(self, node_dim, edge_dim, hidden_dim):
+        super().__init__()
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(2 * node_dim + edge_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, edge_dim)
+        )
+
+    def forward(self, src, dst, edge_attr):
+        """src: [E, node_dim], dst: [E, node_dim], edge_attr: [E, edge_dim]"""
+        out = torch.cat([src, dst, edge_attr], dim=-1)
+        return self.edge_mlp(out)
+
+
+class NodeModel(nn.Module):
+    """节点更新模型"""
+    def __init__(self, node_dim, edge_dim, hidden_dim):
+        super().__init__()
+        self.node_mlp = nn.Sequential(
+            nn.Linear(node_dim + edge_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, node_dim)
+        )
+
+    def forward(self, x, edge_index, edge_attr):
+        """
+        x: [N, node_dim], edge_index: [2, E], edge_attr: [E, edge_dim]
+        """
+        row, col = edge_index  # row->col 消息传递方向
+        # 聚合邻居边信息
+        agg = torch.zeros_like(x[:, :edge_attr.shape[1]])
+        # scatter_add 实现
+        agg = torch.zeros(x.shape[0], edge_attr.shape[1], device=x.device)
+        agg.scatter_add_(0, col.unsqueeze(1).expand_as(edge_attr), edge_attr)
+
+        out = torch.cat([x, agg], dim=-1)
+        return self.node_mlp(out)
+
+
+class MPNN(nn.Module):
+    """Message Passing Neural Network for molecular property prediction"""
+    def __init__(self, node_input_dim=11, edge_input_dim=4, hidden_dim=128,
+                 output_dim=1, n_layers=3):
+        super().__init__()
+        self.node_embed = nn.Linear(node_input_dim, hidden_dim)
+        self.edge_embed = nn.Linear(edge_input_dim, hidden_dim)
+
+        self.message_layers = nn.ModuleList()
+        self.update_layers = nn.ModuleList()
+        for _ in range(n_layers):
+            self.message_layers.append(EdgeModel(hidden_dim, hidden_dim, hidden_dim))
+            self.update_layers.append(NodeModel(hidden_dim, hidden_dim, hidden_dim))
+
+        # 全局读出 (readout)
+        self.readout = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, output_dim)
+        )
+
+    def forward(self, x, edge_index, edge_attr, batch):
+        """
+        Args:
+            x: [N_total, node_input_dim] 节点特征
+            edge_index: [2, E_total] 边索引
+            edge_attr: [E_total, edge_input_dim] 边特征
+            batch: [N_total] 每个节点属于哪个图
+        Returns:
+            [B, output_dim] 每个图的预测
+        """
+        # 嵌入
+        h = self.node_embed(x)
+        e = self.edge_embed(edge_attr)
+
+        # 消息传递
+        for msg_layer, upd_layer in zip(self.message_layers, self.update_layers):
+            row, col = edge_index
+            # 边更新
+            e = e + msg_layer(h[row], h[col], e)
+            # 节点更新
+            h = h + upd_layer(h, edge_index, e)
+
+        # 图级别聚合 (sum pooling)
+        num_graphs = batch.max().item() + 1
+        graph_repr = torch.zeros(num_graphs, h.shape[1], device=h.device)
+        graph_repr.scatter_add_(0, batch.unsqueeze(1).expand_as(h), h)
+
+        # 预测
+        out = self.readout(graph_repr)
+        return out
+
+
+class SimpleMolDataset(Dataset):
+    """简化版分子数据集 (演示用, 实际使用QM9)"""
+    def __init__(self, n_molecules=1000, max_atoms=9):
+        self.n_molecules = n_molecules
+        self.max_atoms = max_atoms
+        # 模拟数据: 实际应加载QM9
+        self.data = self._generate_dummy_data()
+
+    def _generate_dummy_data(self):
+        data_list = []
+        for _ in range(self.n_molecules):
+            n_atoms = np.random.randint(3, self.max_atoms + 1)
+            x = torch.randn(n_atoms, 11)  # 原子特征 (原子类型one-hot等)
+            # 随机连接
+            edges = []
+            for i in range(n_atoms):
+                for j in range(i+1, min(i+3, n_atoms)):
+                    edges.append([i, j])
+                    edges.append([j, i])
+            edge_index = torch.tensor(edges, dtype=torch.long).t()
+            edge_attr = torch.randn(edge_index.shape[1], 4)  # 边特征
+            y = torch.randn(1)  # 目标性质
+            data_list.append((x, edge_index, edge_attr, y))
+        return data_list
+
+    def __len__(self):
+        return self.n_molecules
+
+    def __getitem__(self, idx):
+        return self.data[idx]
+
+
+def collate_graphs(batch):
+    """将多个图合并为一个大图 (batching)"""
+    xs, edge_indices, edge_attrs, ys = [], [], [], []
+    batch_idx = []
+    node_offset = 0
+
+    for i, (x, edge_index, edge_attr, y) in enumerate(batch):
+        xs.append(x)
+        edge_indices.append(edge_index + node_offset)
+        edge_attrs.append(edge_attr)
+        ys.append(y)
+        batch_idx.append(torch.full((x.shape[0],), i, dtype=torch.long))
+        node_offset += x.shape[0]
+
+    return (torch.cat(xs, 0), torch.cat(edge_indices, 1),
+            torch.cat(edge_attrs, 0), torch.cat(ys, 0),
+            torch.cat(batch_idx, 0))
+
+
+def train_gnn():
+    """训练GNN模型"""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # 数据
+    dataset = SimpleMolDataset(n_molecules=5000)
+    train_size = int(0.8 * len(dataset))
+    train_set, val_set = torch.utils.data.random_split(
+        dataset, [train_size, len(dataset) - train_size])
+
+    train_loader = DataLoader(train_set, batch_size=32, shuffle=True, collate_fn=collate_graphs)
+    val_loader = DataLoader(val_set, batch_size=32, collate_fn=collate_graphs)
+
+    # 模型
+    model = MPNN(node_input_dim=11, edge_input_dim=4, hidden_dim=128, output_dim=1).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
+
+    # 训练
+    for epoch in range(100):
+        model.train()
+        total_loss = 0
+        for x, edge_index, edge_attr, y, batch_idx in train_loader:
+            x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
+            y, batch_idx = y.to(device), batch_idx.to(device)
+
+            optimizer.zero_grad()
+            pred = model(x, edge_index, edge_attr, batch_idx)
+            loss = F.mse_loss(pred.squeeze(), y)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        # 验证
+        model.eval()
+        val_mae = 0
+        n_val = 0
+        with torch.no_grad():
+            for x, edge_index, edge_attr, y, batch_idx in val_loader:
+                x, edge_index, edge_attr = x.to(device), edge_index.to(device), edge_attr.to(device)
+                y, batch_idx = y.to(device), batch_idx.to(device)
+                pred = model(x, edge_index, edge_attr, batch_idx)
+                val_mae += torch.abs(pred.squeeze() - y).sum().item()
+                n_val += y.shape[0]
+
+        val_mae /= n_val
+        scheduler.step(val_mae)
+
+        if (epoch + 1) % 10 == 0:
+            print(f"Epoch {epoch+1}: Train Loss={total_loss/len(train_loader):.6f}, Val MAE={val_mae:.6f}")
+
+    return model
+
+
+if __name__ == "__main__":
+    model = train_gnn()
+    print("训练完成!")
+展开全部 210 行
+5. 评测标准
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+维度权重说明模型搭建30%MPNN/SchNet 结构完整；scatter 等关键路径 SUPA/extension 从优精度30%验证/测试 MAE（声明性质与划分；推荐 gap）；须满足下表训练门槛或可复现 checkpoint；仅随机权重推理给流程分性能10%BIREN 单卡、QM9（声明 val/test）、batch_size=32 必报：主指标 **atoms/s**=Σn_atoms/t_wall（warmup≥10，统计≥50；注明纯 forward / 含 DataLoader）；辅 **molecules/s**；**ms/batch**；峰值显存 MB。训练吞吐（加分）：同量纲 atoms/s代码质量15%依赖、划分、随机种子、评估与测速脚本可复现Agent 开发15%必须提交；考察模型开发、优化、性能评估与分析交互及 skills 沉淀；自动调优 skill 加分
+训练门槛： bs=32 时约 3,400–3,500 step/epoch。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+档位step日志精度处理冒烟< 1,000—流程分有效（最低）≥ 3,000（≈1 epoch）≥10 次 train loss + val MAE可评实测 MAE推荐≥ 10,000 或 ≥1 完整 epoch每 epoch 或 ≤500 step 打点从优进阶题 C：神经算子求解 Navier-Stokes 方程【AI4S 模型】FNO 求解二维涡度方程
+1. 赛题简介
+Navier-Stokes 方程是描述流体运动的基本方程。Fourier Neural Operator（FNO）通过数据驱动方式学习 PDE 解算子映射，训练完成后可对新的初始条件实现近实时推理。
+求解目标: 给定 t=0 时刻的涡度场 ω₀，预测 t=T 时刻的涡度场 ω_T。
+应用场景：飞行器气动设计、工业流体仿真加速、海洋环流预测。
+2. 任务要求
+基础要求：
+
+
+基于必选题实现的 Spectral Convolution 算子，搭建完整 FNO 模型（≥ 4 层 Fourier Layer）。
+
+
+使用公开的 Navier-Stokes 2D 数据集（64×64 粘度数据集）。
+
+
+完成模型训练，报告相对 L2 误差。
+
+
+首选在壁仞 BIREN GPU 芯片上完成模型搭建与推理验证（训练为加分项，非硬性要求）。
+
+
+可视化预测流场与 ground truth 对比。
+
+
+3. 完整PyTorch参考实现
+3.1 完整FNO模型实现
+python复制import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+import h5py
+from torch.utils.data import Dataset, DataLoader
+
+class SpectralConv2d(nn.Module):
+    """2D Spectral Convolution (复用必选题实现)"""
+    def __init__(self, in_channels, out_channels, modes1, modes2):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1
+        self.modes2 = modes2
+        scale = 1.0 / (in_channels * out_channels)
+        self.weights1 = nn.Parameter(
+            scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat))
+        self.weights2 = nn.Parameter(
+            scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat))
+
+    def compl_mul2d(self, input, weights):
+        return torch.einsum("bixy,ioxy->boxy", input, weights)
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        x_ft = torch.fft.rfft2(x)
+        out_ft = torch.zeros(B, self.out_channels, H, W // 2 + 1,
+                            dtype=torch.cfloat, device=x.device)
+        out_ft[:, :, :self.modes1, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
+        out_ft[:, :, -self.modes1:, :self.modes2] = \
+            self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+        return torch.fft.irfft2(out_ft, s=(H, W))
+
+
+class FourierLayer(nn.Module):
+    """单个Fourier Layer: spectral conv + skip connection + activation"""
+    def __init__(self, width, modes1, modes2):
+        super().__init__()
+        self.spectral_conv = SpectralConv2d(width, width, modes1, modes2)
+        self.conv = nn.Conv2d(width, width, 1)  # 1x1卷积作为skip
+        self.norm = nn.InstanceNorm2d(width)
+
+    def forward(self, x):
+        return F.gelu(self.norm(self.spectral_conv(x) + self.conv(x)))
+
+
+class FNO2d(nn.Module):
+    """Fourier Neural Operator for 2D Navier-Stokes"""
+    def __init__(self, modes1=12, modes2=12, width=32, n_layers=4,
+                 in_channels=12, out_channels=1):
+        super().__init__()
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.width = width
+
+        # 输入提升
+        self.lift = nn.Conv2d(in_channels + 2, width, 1)  # +2 for grid coordinates
+
+        # Fourier layers
+        self.fourier_layers = nn.ModuleList([
+            FourierLayer(width, modes1, modes2) for _ in range(n_layers)
+        ])
+
+        # 输出投影
+        self.project = nn.Sequential(
+            nn.Conv2d(width, 128, 1),
+            nn.GELU(),
+            nn.Conv2d(128, out_channels, 1)
+        )
+
+    def get_grid(self, shape, device):
+        """生成网格坐标"""
+        B, C, H, W = shape
+        gridx = torch.linspace(0, 1, H, device=device).reshape(1, 1, H, 1).expand(B, 1, H, W)
+        gridy = torch.linspace(0, 1, W, device=device).reshape(1, 1, 1, W).expand(B, 1, H, W)
+        return torch.cat([gridx, gridy], dim=1)
+
+    def forward(self, x):
+        """
+        Args:
+            x: [B, T_in, H, W] 输入时间步的涡度场
+        Returns:
+            [B, 1, H, W] 预测的涡度场
+        """
+        # 拼接网格坐标
+        grid = self.get_grid(x.shape, x.device)
+        x = torch.cat([x, grid], dim=1)
+
+        # 提升维度
+        x = self.lift(x)
+
+        # Fourier layers
+        for layer in self.fourier_layers:
+            x = layer(x)
+
+        # 投影到输出
+        x = self.project(x)
+        return x
+
+
+class NavierStokesDataset(Dataset):
+    """Navier-Stokes 2D 数据集"""
+    def __init__(self, data_path, n_train=1000, T_in=10, T_out=1, resolution=64):
+        """
+        data_path: HDF5文件路径
+        数据格式: [N, T, H, W] N个样本, T个时间步, H×W空间分辨率
+        """
+        self.T_in = T_in
+        self.T_out = T_out
+        self.resolution = resolution
+
+        # 加载数据 (实际使用时从文件加载)
+        # 此处用随机数据演示
+        self.data = torch.randn(n_train, T_in + T_out, resolution, resolution)
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def __getitem__(self, idx):
+        x = self.data[idx, :self.T_in]   # [T_in, H, W]
+        y = self.data[idx, -self.T_out:]  # [T_out, H, W]
+        return x, y
+
+
+def train_fno():
+    """训练FNO模型"""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # 超参数
+    modes = 12
+    width = 32
+    n_layers = 4
+    T_in = 10
+    batch_size = 16
+    learning_rate = 1e-3
+    n_epochs = 100
+    resolution = 64
+
+    # 数据
+    train_dataset = NavierStokesDataset(
+        data_path=None, n_train=1000, T_in=T_in, resolution=resolution)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    # 模型
+    model = FNO2d(modes1=modes, modes2=modes, width=width,
+                  n_layers=n_layers, in_channels=T_in, out_channels=1).to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs)
+
+    print(f"模型参数量: {sum(p.numel() for p in model.parameters()):,}")
+
+    # 训练循环
+    for epoch in range(n_epochs):
+        model.train()
+        total_loss = 0
+        for x, y in train_loader:
+            x, y = x.to(device), y.to(device)
+
+            optimizer.zero_grad()
+            pred = model(x)
+
+            # 相对L2损失
+            loss = torch.norm(pred - y) / torch.norm(y)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        scheduler.step()
+
+        if (epoch + 1) % 10 == 0:
+            avg_loss = total_loss / len(train_loader)
+            print(f"Epoch {epoch+1}/{n_epochs}: Relative L2 Loss = {avg_loss:.6f}")
+
+    return model
+
+
+def evaluate_fno(model, test_loader, device):
+    """评估FNO模型"""
+    model.eval()
+    total_l2 = 0
+    n_samples = 0
+
+    with torch.no_grad():
+        for x, y in test_loader:
+            x, y = x.to(device), y.to(device)
+            pred = model(x)
+            l2 = torch.norm(pred - y, dim=(-2, -1)) / torch.norm(y, dim=(-2, -1))
+            total_l2 += l2.sum().item()
+            n_samples += x.shape[0]
+
+    return total_l2 / n_samples
+
+
+if __name__ == "__main__":
+    model = train_fno()
+    print("FNO训练完成!")
+展开全部 199 行
+5. 评测标准
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+维度权重说明模型搭建30%FNO 结构完整；复用本队必选 SpectralConv 从优；等价自研须说明对应关系精度25%相对 L2（声明 64×64 数据与划分）；进入「有实测 L2」档须满足下表训练门槛或 checkpoint；仅前向给部分分性能10%BIREN 单卡、64×64 NS、建议 batch_size=16 必报：主指标 **grid_points/s**=Σ(H×W×batch)/t_wall（单通道按 H×W；warmup≥10，统计≥50；注明纯 forward / 含 DataLoader）；辅 **samples/s**；**ms/sample**；峰值显存 MB。训练吞吐（加分）：同量纲 grid_points/s可视化20%预测与 GT 对比，须可见误差空间分布Agent 开发15%必须提交；考察模型开发、优化、性能评估与分析交互及 skills 沉淀；自动调优 skill 加分
+训练门槛： 参考实现 n_train=1000、bs=16 → ≈63 step/epoch；n_epochs=100 → ≈6,300 step。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+档位step（或等价 epoch）日志精度处理冒烟< 500（≈8 epoch）—流程分有效（最低）≥ 2,000（≈30 epoch）≥10 次 train relative L2可评实测 L2推荐≥ 6,000 或 ≥100 epoch每 ≤10 epoch 打点对齐参考训练量，从优
+统一要求开发环境
+
+
+硬件平台：首选壁仞 BIREN GPU 芯片
+
+
+语言：推荐 Python（模型层）、C++/SUPA（算子 kernel 层）
+
+
+框架：推荐基于壁仞 br_pytorch 生态，可使用 PyTorch 兼容接口
+
+
+算子实现方式：建议使用 SUPA 源码实现核心算子，或通过 torch.extension 封装自定义算子
+
+
+模型与算子实现要求
+本赛道的模型题（进阶题 A/B/C）不建议直接使用原生 PyTorch 算子拼接模型。参赛者应体现对底层计算逻辑和 BIREN GPU 架构的深入理解，推荐采用以下实现方式：
+
+
+方式一（推荐）：使用 SUPA 源码直接实现模型中的核心算子（如消息传递、注意力计算、PDE残差计算等），通过算子串联构建完整的模型前向/反向计算流程。
+
+
+方式二：通过 torch.extension（C++/SUPA 扩展）封装自定义算子，注册为 PyTorch 可调用的 Function/Module，在 Python 层组装模型结构。
+
+
+必选题（算子题）必须使用 SUPA 或 torch.extension 实现核心计算 kernel。
+
+
+评审时将重点考察：算子实现的正确性与性能、对 BIREN GPU 计算特性的利用程度、kernel 设计的合理性（如内存合并访问、并行度、shared memory 利用等）。
+
+
+Agent 开发要求（必须项）
+
+
+参赛者必须使用壁仞自研模型/算子开发 Agent 或通用 AI 编程工具（如 Claude Code、Cursor 等）辅助开发，Agent 辅助开发记录作为必须提交材料。
+
+
+必须提交 Agent 交互日志或截图（至少 5 段有效交互记录），未提交 Agent 记录的作品视为不合格。
+
+
+Agent 使用场景要求（至少覆盖以下 3 项）：算子 kernel 设计/调试/优化、模型架构选型与超参搜索、数据预处理与特征工程、性能瓶颈分析与定位、结果分析与可视化代码生成、BIREN GPU 平台适配问题排查
+
+
+Agent 辅助开发的深度、效率提升效果及工程实践质量将作为重要评审维度（占比 15%）。
+
+
+提交规范
+一、skill.md 文件（必须提交）
+二、其他文件
+
+项目源码
+完整依赖说明与编译 / 运行命令
+正确性验证脚本与验证结果
+性能测试脚本与性能报告
+运行日志或截图
+Agent/Skill 开发日志：至少 5 段有效交互记录（缺失则无效）
+展示材料（PPT / 视频 / 可视化图片）：可选，但建议提交
+
+详情可见赛题引导文档。
+运行要求
+
+
+本赛道以考察模型搭建能力为主，模型训练和推理不作为硬性要求（完成训练为加分项）。
+
+
+必须提交：可运行的模型前向计算代码，能在 BIREN GPU 上完成单次推理验证。
+
+
+不要求多卡训练或分布式运行，优先保证单卡可运行、可复现。
+
+
+如提交训练流程：建议控制在 2 小时以内（可提供预训练 checkpoint）。
+
+
+完整评测脚本建议控制在 30 分钟以内。
+
+
+风险提示：赛题开发过程中，个别开发环境可能引起异常，导致环境丢失风险，请及时保存个人开发成果，推荐将环境搭建过程脚本化。
+
+
+各题目计算特征汇总
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+题目核心计算BIREN 平台关键依赖显存估算难度评级必选题:SpectralConvFFT + 复数einsum + IFFTcuFFT等价库、cfloat支持2-8GB中等进阶A:PINNMLP前向 + 二阶autograd完整autograd、create_graph<2GB中等偏低进阶B:GNNscatter_add + MLP高效scatter/gather、动态索引<1GB中等进阶C:FNO-NS多层FFT+复数乘+Conv2dcuFFT等价、cfloat、大显存3-10GB中等偏高
+关键API依赖清单（BIREN 平台需支持）：
+
+
+torch.fft.rfft2 / irfft2 / rfftn / irfftn — FFT操作族
+
+
+torch.einsum — 复数张量缩并
+
+
+torch.autograd.grad (create_graph=True) — 高阶自动微分
+
+
+scatter_add_ — 稀疏聚合操作
+
+
+nn.Conv2d, nn.Linear — 标准层
+
+
+F.gelu, nn.Tanh, nn.ReLU — 激活函数
+
+
+nn.InstanceNorm2d — 归一化层
+
+
+Adam, lr_scheduler — 优化器和调度器
+
+
+FAQQ1：必须使用壁仞 GPU 吗？
+A：是的，所有提交首选在壁仞 BIREN GPU 芯片上运行验证。开发阶段可先在其他平台调试。
+Q2：进阶题 C 可以不使用必选题的算子吗？
+A：可以使用其他方式实现 FNO 模型，但复用必选题算子将获得额外加分（体现工程衔接能力）。
+Q3：Agent 日志如何提交？
+A：Agent 开发日志为必须提交材料。可以是 AI 工具的对话导出文件、终端日志截图、或整理后的 Markdown 文档，需体现真实交互过程，至少包含 5 段有效交互记录。
+Q4：数据集需要自己收集吗？
+A：所有题目均提供公开数据集来源。组委会将提供数据集下载链接或预处理脚本。
+Q5：可以使用预训练模型吗？
+A：允许使用公开预训练权重作为初始化，但须注明来源。核心算子必须自主实现。
+Q6：模型题可以直接用原生 PyTorch 实现吗？
+A：不建议。模型题要求参赛者使用 SUPA 源码实现模型的算子串联，或通过 torch.extension 的形式构建自定义算子并组装模型，以体现对底层计算逻辑和 BIREN GPU 架构的理解。开发者资源包上海人工智能实验室 × 壁仞科技壁仞科技 API Key限量1000份剩余 552 / 1000欢迎报名参加本次大赛，此次大赛模型算力由壁仞科技支持，领取开放周期为 7.17-7.31，届时各位可调用 Minimax2.7 以及 Deepseek v4 flash 进行 AI 辅助开发立即领取 API Key上海人工智能实验室 × 壁仞科技国产算力开发环境限量300份模型与算子赛道 · 量子计算赛道剩余 161 / 300恭喜您成为壁仞专属赛道开发者，我们将为您提供壁仞 GPU 开发环境，环境将于 7.17 正式开放申领，数量有限，先到先得立即领取开发环境社群交流扫码加入「壁仞飞翔杯·模型与算子」赛道交流群报名后请备注【壁仞飞翔杯·模型与算子 + 单位 + 姓名】，获取赛题答疑、数据集与资源领取通知。书生国智科探挑战赛 · 以 AI 智能体驱动科学发现，覆盖生命 / 物质 / 地球 / 量子 / 算子与自由六大赛道。主办：上海人工智能实验室　·　联合主办：壁仞科技赛事赛事简介赛道介绍赛程安排常见问题参赛赛事报名参赛管理相关资源法律法律协议隐私协议个人信息保护政策联系我们interndiscovery@pjlab.org.cn扫码添加比赛助手© All Rights Reserved. 沪ICP备2021009351号-21Powered by Intern Discovery Platform
+    
+

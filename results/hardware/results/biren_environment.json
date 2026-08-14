@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-30T17:14:41.099441+00:00",
+  "host": {
+    "hostname": "[REDACTED_INSTANCE]",
+    "platform": "Linux-5.15.0-119-generic-x86_64-with-glibc2.35",
+    "machine": "x86_64",
+    "python": "3.10.12 (main, Mar  3 2026, 11:56:32) [GCC 11.4.0]",
+    "executable": "/usr/bin/python3",
+    "working_directory": "/workspace/spectralconv_competition_20260731"
+  },
+  "selected_environment": {
+    "SUPA_VISIBLE_DEVICES": "not set"
+  },
+  "commands": {
+    "brsmi": {
+      "path": "/usr/bin/brsmi",
+      "diagnostic": {
+        "command": [
+          "/usr/bin/brsmi"
+        ],
+        "returncode": 0,
+        "output": "Fri Jul 31 01:14:41 2026\n+------------------------------------------------------------------------------+\n| BR-SMI 1.11.0          Driver Version: 1.11.0          SUPA Version: 1.11    |\n+----------------------------+-----------------------+-------------------------+\n|   GPU                 Name |                Bus-Id |    Volatile Uncorr. ECC |\n|  Temp  Perf  Pwr:Usage/Cap |          Memory-Usage |    GPU-Util  Compute M. |\n|              Persistence-M |                       |                  SVI M. |\n+============================+=======================+=========================+\n|     0            Biren106M |      00000000:19:00.0 |                       0 |\n|    32    P0     62W / 400W |     224MiB / 32512MiB |          0%     Default |\n|                        Off |                       |                Disabled |\n+----------------------------+-----------------------+-------------------------+\n+------------------------------------------------------------------------------+\n| Processes:                                                                   |\n| GPU   SVI Dev        PID   Process Name                     GPU Memory Usage |\n+==============================================================================+\n|   0       N/A  [REDACTED]   python3                                    188MiB |\n+------------------------------------------------------------------------------+"
+      }
+    },
+    "supacc": {
+      "path": null
+    },
+    "supa": {
+      "path": null
+    },
+    "c++": {
+      "path": "/usr/bin/c++"
+    },
+    "g++": {
+      "path": "/usr/bin/g++"
+    }
+  },
+  "pytorch": {
+    "platform_modules": {
+      "torch_br": {
+        "available": true,
+        "version": "1.10.0.20900+br1xx",
+        "module_file": "/usr/local/lib/python3.10/dist-packages/torch_br/__init__.py"
+      }
+    },
+    "torch_import": {
+      "passed": true,
+      "version": "2.9.0+cu128",
+      "file": "/usr/local/lib/python3.10/dist-packages/torch/__init__.py"
+    },
+    "supa_namespace": {
+      "available": true,
+      "is_available": true,
+      "device_count": 1,
+      "current_device": 0,
+      "device_name": "Biren106M",
+      "device_properties": "_DeviceProperties(name='Biren106M', total_memory=32512MB, max_compute_units=16, die_count=1)"
+    },
+    "critical_tests": {
+      "passed": true,
+      "device": "supa:0",
+      "input_dtype": "torch.float32",
+      "fft_dtype": "torch.complex64",
+      "output_shape": [
+        2,
+        2,
+        8,
+        8
+      ],
+      "gradient_finite": true,
+      "fft_tolerance": 0.0001,
+      "native_rfft2_relative_l2_vs_cpu": 1.027866201678142,
+      "sequential_rfft2_relative_l2_vs_cpu": 4.860923384338554e-08,
+      "native_vs_sequential_relative_l2": 1.027866201678142,
+      "native_rfft2_height_axis_valid": false,
+      "selected_fft_strategy": "sequential_rfft_w_then_fft_h"
+    }
+  },
+  "project_extension": {
+    "available": true,
+    "module_name": "src.supa.spectralconv_supa_ext",
+    "detail": "complex_mul_modes forward 已注册，显式 backward 已注册"
+  }
+}

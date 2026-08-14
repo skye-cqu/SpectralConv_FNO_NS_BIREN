@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-30T17:14:46.079068+00:00",
+  "device": "supa",
+  "device_name": "Biren106M",
+  "dtype": "torch.float32",
+  "shape": {
+    "batch_size": 2,
+    "in_channels": 3,
+    "out_channels": 5,
+    "height": 64,
+    "width": 64,
+    "modes1": 12,
+    "modes2": 12
+  },
+  "extension": "complex_mul_modes forward 已注册，显式 backward 已注册",
+  "tolerance": 0.0001,
+  "metrics": {
+    "forward": {
+      "relative_l2": 2.1384954607128748e-07,
+      "max_absolute": 3.3527612686157227e-08
+    },
+    "input_gradient": {
+      "relative_l2": 2.1281339002143795e-07,
+      "max_absolute": 3.725290298461914e-08
+    },
+    "weights1_gradient": {
+      "relative_l2": 2.006943873311684e-07,
+      "max_absolute": 1.9462993350316538e-06
+    },
+    "weights2_gradient": {
+      "relative_l2": 2.1191458188241086e-07,
+      "max_absolute": 2.5344243113067932e-06
+    }
+  },
+  "passed": true
+}

@@ -1,0 +1,7 @@
+# BIREN 服务器不要用此文件安装或替换 torch；详见 DEPENDENCIES.md。
+numpy>=1.24,<3
+scipy>=1.10,<2
+h5py>=3.8,<4
+matplotlib>=3.7,<4
+psutil>=5.9,<8
+pytest>=7.4,<9

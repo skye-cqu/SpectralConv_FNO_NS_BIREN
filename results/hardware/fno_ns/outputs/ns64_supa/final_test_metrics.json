@@ -1,0 +1,6 @@
+{
+  "selected_epoch": 90,
+  "best_validation_relative_l2": 0.6736211919784546,
+  "final_test_relative_l2": 0.6849088621139526,
+  "test_samples": 200
+}

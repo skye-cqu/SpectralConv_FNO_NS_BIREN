@@ -1,0 +1,25 @@
+nohup: ignoring input
+device=supa backend=supa train=900 validation=100 test=200
+{"epoch": 1, "step": 57, "train_relative_l2": 0.9948399289449056, "validation_relative_l2": 0.9827975797653198, "learning_rate": 0.0009997532801828658, "epoch_seconds": 60.19849211489782}
+{"epoch": 5, "step": 285, "train_relative_l2": 0.9781382899814182, "validation_relative_l2": 0.9787093114852905, "learning_rate": 0.0009938441702975688, "epoch_seconds": 50.3087788913399}
+{"epoch": 10, "step": 570, "train_relative_l2": 0.9699311526616414, "validation_relative_l2": 0.9679917144775391, "learning_rate": 0.0009755282581475767, "epoch_seconds": 49.818430255167186}
+{"epoch": 15, "step": 855, "train_relative_l2": 0.9413693968454997, "validation_relative_l2": 1.0915428829193115, "learning_rate": 0.0009455032620941839, "epoch_seconds": 50.792347833979875}
+{"epoch": 20, "step": 1140, "train_relative_l2": 1.115326969358656, "validation_relative_l2": 1.0974269914627075, "learning_rate": 0.0009045084971874739, "epoch_seconds": 49.30360468290746}
+{"epoch": 25, "step": 1425, "train_relative_l2": 0.9140332635243734, "validation_relative_l2": 1.0878195762634277, "learning_rate": 0.0008535533905932737, "epoch_seconds": 52.708167765755206}
+{"epoch": 30, "step": 1710, "train_relative_l2": 0.958611208597819, "validation_relative_l2": 1.1218108320236206, "learning_rate": 0.0007938926261462367, "epoch_seconds": 49.807553481310606}
+{"epoch": 35, "step": 1995, "train_relative_l2": 0.7786478196250067, "validation_relative_l2": 0.8329422783851623, "learning_rate": 0.0007269952498697734, "epoch_seconds": 49.99110309081152}
+{"epoch": 40, "step": 2280, "train_relative_l2": 0.72639694319831, "validation_relative_l2": 0.71112877368927, "learning_rate": 0.0006545084971874737, "epoch_seconds": 51.75950187025592}
+{"epoch": 45, "step": 2565, "train_relative_l2": 0.8387211275100708, "validation_relative_l2": 0.8460525941848754, "learning_rate": 0.0005782172325201156, "epoch_seconds": 50.387336457148194}
+{"epoch": 50, "step": 2850, "train_relative_l2": 0.7792087973488702, "validation_relative_l2": 0.858272728919983, "learning_rate": 0.0005000000000000002, "epoch_seconds": 49.89963567722589}
+{"epoch": 55, "step": 3135, "train_relative_l2": 0.7470373720592922, "validation_relative_l2": 0.7536825037002564, "learning_rate": 0.0004217827674798847, "epoch_seconds": 50.69403898809105}
+{"epoch": 60, "step": 3420, "train_relative_l2": 0.7040825282202826, "validation_relative_l2": 0.706348385810852, "learning_rate": 0.00034549150281252655, "epoch_seconds": 50.40000364091247}
+{"epoch": 65, "step": 3705, "train_relative_l2": 0.7036354520585801, "validation_relative_l2": 0.6875421476364135, "learning_rate": 0.0002730047501302267, "epoch_seconds": 50.794086385983974}
+{"epoch": 70, "step": 3990, "train_relative_l2": 0.696923835542467, "validation_relative_l2": 0.7015791511535645, "learning_rate": 0.00020610737385376356, "epoch_seconds": 49.29975540190935}
+{"epoch": 75, "step": 4275, "train_relative_l2": 0.6891771727138095, "validation_relative_l2": 0.6780526638031006, "learning_rate": 0.00014644660940672634, "epoch_seconds": 49.500813860911876}
+{"epoch": 80, "step": 4560, "train_relative_l2": 0.6861774815453423, "validation_relative_l2": 0.6807726836204528, "learning_rate": 9.549150281252637e-05, "epoch_seconds": 51.50556235294789}
+{"epoch": 85, "step": 4845, "train_relative_l2": 0.6885743594169617, "validation_relative_l2": 0.686180386543274, "learning_rate": 5.449673790581613e-05, "epoch_seconds": 49.391793065704405}
+{"epoch": 90, "step": 5130, "train_relative_l2": 0.683586155573527, "validation_relative_l2": 0.6736211919784546, "learning_rate": 2.447174185242324e-05, "epoch_seconds": 49.580560674890876}
+{"epoch": 95, "step": 5415, "train_relative_l2": 0.6829587560229832, "validation_relative_l2": 0.6736665058135987, "learning_rate": 6.155829702431171e-06, "epoch_seconds": 50.29985963087529}
+{"epoch": 100, "step": 5700, "train_relative_l2": 0.6829287846883138, "validation_relative_l2": 0.6736404609680176, "learning_rate": 0.0, "epoch_seconds": 48.29284863686189}
+{"selected_epoch": 90, "best_validation_relative_l2": 0.6736211919784546, "final_test_relative_l2": 0.6849088621139526, "test_samples": 200}
+checkpoint=fno_ns/outputs/ns64_supa/best_fno.pt

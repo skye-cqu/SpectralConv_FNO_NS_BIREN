@@ -1,0 +1,13 @@
+{
+  "relative_l2": 0.6849088621139526,
+  "samples": 200,
+  "batch_size": 16,
+  "configured_batch_size": 16,
+  "device": "supa",
+  "backend": "supa",
+  "elapsed_seconds": 41.600454420316964,
+  "grid_points_per_second": 157536.74067558578,
+  "samples_per_second": 38.461118329000435,
+  "milliseconds_per_sample": 26.000284012698103,
+  "peak_memory_mb": 218.541015625
+}
